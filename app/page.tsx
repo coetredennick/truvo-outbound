@@ -168,6 +168,20 @@ export default function Home() {
     loadStats()
   }
 
+  async function deleteSelected() {
+    if (selectedContacts.size === 0) return
+    if (!confirm(`Delete ${selectedContacts.size} contact(s)? This cannot be undone.`)) return
+
+    await supabase
+      .from('contacts')
+      .delete()
+      .in('id', Array.from(selectedContacts))
+
+    setSelectedContacts(new Set())
+    loadContacts()
+    loadStats()
+  }
+
   function getStatusStyle(status: string) {
     switch (status) {
       case 'ready': return 'bg-gray-600/30 text-gray-300'
@@ -288,6 +302,14 @@ export default function Home() {
                 className="bg-gray-600 hover:bg-gray-500 disabled:bg-gray-700 disabled:text-gray-500 px-3 py-1 rounded text-sm"
               >
                 Reset Selected
+              </button>
+              <button
+                type="button"
+                onClick={deleteSelected}
+                disabled={selectedContacts.size === 0}
+                className="bg-red-600 hover:bg-red-700 disabled:bg-gray-700 disabled:text-gray-500 px-3 py-1 rounded text-sm"
+              >
+                Delete Selected
               </button>
               <button
                 type="button"
