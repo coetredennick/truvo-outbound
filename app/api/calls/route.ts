@@ -3,9 +3,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createVapiCall } from '@/lib/vapi'
 import type { Contact } from '@/lib/supabase'
 
-// Allow up to 5 minutes for batch calls with delays
-export const maxDuration = 300
-
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_KEY!
@@ -13,10 +10,7 @@ const supabase = createClient(
 
 const ASSISTANT_ID = process.env.NEXT_PUBLIC_DEFAULT_ASSISTANT_ID!
 const PHONE_NUMBER_ID = process.env.NEXT_PUBLIC_DEFAULT_PHONE_NUMBER_ID!
-const CALL_DELAY_MS = 30000 // 30 seconds between calls
-
-// Helper to delay execution
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+const CALL_INTERVAL_MS = 30000 // 30 seconds between calls
 
 // Format phone to E.164
 function formatPhone(phone: string): string {
@@ -44,10 +38,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Contacts not found' }, { status: 404 })
     }
 
-    const results: { id: string; success: boolean; error?: string; vapiCallId?: string }[] = []
+    const results: { id: string; success: boolean; error?: string; vapiCallId?: string; scheduledAt?: string }[] = []
 
-    for (const contact of contacts as Contact[]) {
+    for (let i = 0; i < contacts.length; i++) {
+      const contact = contacts[i] as Contact
       try {
+        // Schedule call: first one now, rest staggered 30s apart
+        const scheduledAt = i === 0
+          ? undefined  // First call fires immediately
+          : new Date(Date.now() + (i * CALL_INTERVAL_MS)).toISOString()
+
         // 1. Increment call_count and set status to 'calling' FIRST
         const newCallCount = contact.call_count + 1
         await supabase
@@ -59,11 +59,12 @@ export async function POST(request: NextRequest) {
           })
           .eq('id', contact.id)
 
-        // 2. Fire the Vapi call
+        // 2. Fire the Vapi call (with optional scheduledAt)
         const vapiResponse = await createVapiCall({
           assistantId: ASSISTANT_ID,
           phoneNumberId: PHONE_NUMBER_ID,
           customerNumber: formatPhone(contact.phone),
+          scheduledAt,
           variables: {
             leadName: contact.first_name || 'there',
             companyName: contact.company || 'your company',
@@ -82,13 +83,9 @@ export async function POST(request: NextRequest) {
         results.push({
           id: contact.id,
           success: true,
-          vapiCallId: vapiResponse.id
+          vapiCallId: vapiResponse.id,
+          scheduledAt
         })
-
-        // Wait 30 seconds before next call (except for last one)
-        if (contacts.indexOf(contact) < contacts.length - 1) {
-          await delay(CALL_DELAY_MS)
-        }
 
       } catch (err) {
         console.error(`Error calling contact ${contact.id}:`, err)

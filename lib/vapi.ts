@@ -10,6 +10,7 @@ export interface VapiCallRequest {
   assistantId: string
   phoneNumberId: string
   customerNumber: string
+  scheduledAt?: string  // ISO timestamp for delayed execution
   variables: {
     leadName: string
     companyName: string
@@ -26,22 +27,29 @@ export interface VapiCallResponse {
 }
 
 export async function createVapiCall(request: VapiCallRequest): Promise<VapiCallResponse> {
+  const payload: Record<string, any> = {
+    assistantId: request.assistantId,
+    phoneNumberId: request.phoneNumberId,
+    customer: {
+      number: request.customerNumber
+    },
+    assistantOverrides: {
+      variableValues: request.variables
+    }
+  }
+
+  // Add scheduledAt if provided (for staggered calls)
+  if (request.scheduledAt) {
+    payload.scheduledAt = request.scheduledAt
+  }
+
   const response = await fetch(`${VAPI_BASE_URL}/call`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${getApiKey()}`,
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({
-      assistantId: request.assistantId,
-      phoneNumberId: request.phoneNumberId,
-      customer: {
-        number: request.customerNumber
-      },
-      assistantOverrides: {
-        variableValues: request.variables
-      }
-    })
+    body: JSON.stringify(payload)
   })
 
   if (!response.ok) {
