@@ -122,6 +122,7 @@ export default function Home() {
   }
 
   function clearSelection() {
+    alert('Clearing ' + selectedContacts.size + ' selections')
     setSelectedContacts(new Set())
   }
 
