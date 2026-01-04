@@ -8,6 +8,7 @@ export default function Home() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [selectedCampaign, setSelectedCampaign] = useState<string>('')
   const [contacts, setContacts] = useState<Contact[]>([])
+  const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set())
   const [csvData, setCsvData] = useState<any[]>([])
   const [fieldMapping, setFieldMapping] = useState({
     phone: '',
@@ -18,7 +19,8 @@ export default function Home() {
     industry: ''
   })
   const [loading, setLoading] = useState(false)
-  const [stats, setStats] = useState({ pending: 0, completed: 0, failed: 0 })
+  const [calling, setCalling] = useState(false)
+  const [stats, setStats] = useState({ ready: 0, answered: 0, noAnswer: 0, exhausted: 0 })
 
   // Load campaigns on mount
   useEffect(() => {
@@ -44,7 +46,7 @@ export default function Home() {
       .select('*')
       .eq('campaign_id', selectedCampaign)
       .order('created_at', { ascending: false })
-      .limit(100)
+      .limit(200)
     if (data) setContacts(data)
   }
 
@@ -55,10 +57,12 @@ export default function Home() {
       .eq('campaign_id', selectedCampaign)
 
     if (data) {
-      const pending = data.filter(c => c.status === 'pending' || c.status === 'failed').length
-      const completed = data.filter(c => c.status === 'completed').length
-      const failed = data.filter(c => c.status === 'dnc').length
-      setStats({ pending, completed, failed })
+      setStats({
+        ready: data.filter(c => c.status === 'ready').length,
+        answered: data.filter(c => c.status === 'answered').length,
+        noAnswer: data.filter(c => ['no_answer', 'voicemail', 'failed'].includes(c.status)).length,
+        exhausted: data.filter(c => c.status === 'exhausted').length
+      })
     }
   }
 
@@ -66,10 +70,10 @@ export default function Home() {
     const name = prompt('Campaign name:')
     if (!name) return
 
-    const { data, error } = await supabase.from('campaigns').insert({
+    const { data } = await supabase.from('campaigns').insert({
       name,
-      assistant_id: process.env.NEXT_PUBLIC_DEFAULT_ASSISTANT_ID || '133504a9-be77-4b3a-8923-2e9dad3c029a',
-      phone_number_id: process.env.NEXT_PUBLIC_DEFAULT_PHONE_NUMBER_ID || 'ec4706e8-b8aa-45af-ac49-3632d73fc451',
+      assistant_id: process.env.NEXT_PUBLIC_DEFAULT_ASSISTANT_ID!,
+      phone_number_id: process.env.NEXT_PUBLIC_DEFAULT_PHONE_NUMBER_ID!,
       status: 'paused'
     }).select().single()
 
@@ -77,12 +81,6 @@ export default function Home() {
       setCampaigns([data, ...campaigns])
       setSelectedCampaign(data.id)
     }
-  }
-
-  async function toggleCampaign(campaign: Campaign) {
-    const newStatus = campaign.status === 'active' ? 'paused' : 'active'
-    await supabase.from('campaigns').update({ status: newStatus }).eq('id', campaign.id)
-    loadCampaigns()
   }
 
   function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -93,7 +91,6 @@ export default function Home() {
       header: true,
       complete: (results) => {
         setCsvData(results.data)
-        // Auto-detect field mappings
         const headers = results.meta.fields || []
         const newMapping = { ...fieldMapping }
 
@@ -117,7 +114,7 @@ export default function Home() {
     setLoading(true)
 
     const contactsToInsert = csvData
-      .filter(row => row[fieldMapping.phone]) // Must have phone
+      .filter(row => row[fieldMapping.phone])
       .map(row => ({
         campaign_id: selectedCampaign,
         phone: row[fieldMapping.phone],
@@ -126,7 +123,8 @@ export default function Home() {
         company: row[fieldMapping.company] || '',
         location: row[fieldMapping.location] || '',
         industry: row[fieldMapping.industry] || '',
-        status: 'pending'
+        status: 'ready',
+        call_count: 0
       }))
 
     const { error } = await supabase.from('contacts').insert(contactsToInsert)
@@ -143,7 +141,84 @@ export default function Home() {
     setLoading(false)
   }
 
+  function toggleContact(id: string) {
+    const newSelected = new Set(selectedContacts)
+    if (newSelected.has(id)) {
+      newSelected.delete(id)
+    } else {
+      newSelected.add(id)
+    }
+    setSelectedContacts(newSelected)
+  }
+
+  function selectAllReady() {
+    const readyIds = contacts.filter(c => c.status === 'ready').map(c => c.id)
+    setSelectedContacts(new Set(readyIds))
+  }
+
+  function clearSelection() {
+    setSelectedContacts(new Set())
+  }
+
+  async function callSelected() {
+    if (selectedContacts.size === 0) return
+    setCalling(true)
+
+    try {
+      const response = await fetch('/api/calls', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contactIds: Array.from(selectedContacts),
+          campaignId: selectedCampaign
+        })
+      })
+
+      const result = await response.json()
+
+      if (result.error) {
+        alert('Error: ' + result.error)
+      } else {
+        alert(result.message)
+        setSelectedContacts(new Set())
+        loadContacts()
+        loadStats()
+      }
+    } catch (err) {
+      alert('Error initiating calls')
+    }
+
+    setCalling(false)
+  }
+
+  async function resetSelected() {
+    if (selectedContacts.size === 0) return
+
+    await supabase
+      .from('contacts')
+      .update({ status: 'ready' })
+      .in('id', Array.from(selectedContacts))
+
+    setSelectedContacts(new Set())
+    loadContacts()
+    loadStats()
+  }
+
+  function getStatusStyle(status: string) {
+    switch (status) {
+      case 'ready': return 'bg-gray-600/30 text-gray-300'
+      case 'calling': return 'bg-blue-600/30 text-blue-400 animate-pulse'
+      case 'answered': return 'bg-green-600/30 text-green-400'
+      case 'no_answer': return 'bg-yellow-600/30 text-yellow-400'
+      case 'voicemail': return 'bg-orange-600/30 text-orange-400'
+      case 'failed': return 'bg-red-600/30 text-red-400'
+      case 'exhausted': return 'bg-gray-600/20 text-gray-500 line-through'
+      default: return 'bg-gray-600/30 text-gray-400'
+    }
+  }
+
   const csvHeaders = csvData[0] ? Object.keys(csvData[0]) : []
+  const callableContacts = contacts.filter(c => ['ready', 'no_answer', 'voicemail', 'failed'].includes(c.status) && c.call_count < 2)
 
   return (
     <main className="min-h-screen bg-gray-900 text-white p-8">
@@ -172,23 +247,7 @@ export default function Home() {
                     : 'border-gray-600 bg-gray-750 hover:border-gray-500'
                   }`}
               >
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="font-medium">{c.name}</h3>
-                    <p className="text-sm text-gray-400">
-                      {c.call_window_start} - {c.call_window_end}
-                    </p>
-                  </div>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); toggleCampaign(c) }}
-                    className={`px-3 py-1 rounded text-sm ${c.status === 'active'
-                        ? 'bg-green-600 hover:bg-green-700'
-                        : 'bg-gray-600 hover:bg-gray-500'
-                      }`}
-                  >
-                    {c.status === 'active' ? 'Active' : 'Paused'}
-                  </button>
-                </div>
+                <h3 className="font-medium">{c.name}</h3>
               </div>
             ))}
           </div>
@@ -197,18 +256,22 @@ export default function Home() {
         {selectedCampaign && (
           <>
             {/* Stats */}
-            <div className="grid grid-cols-3 gap-4 mb-6">
-              <div className="bg-yellow-600/20 border border-yellow-600 rounded-lg p-4">
-                <p className="text-yellow-400 text-sm">Pending</p>
-                <p className="text-2xl font-bold">{stats.pending}</p>
+            <div className="grid grid-cols-4 gap-4 mb-6">
+              <div className="bg-gray-600/20 border border-gray-600 rounded-lg p-4">
+                <p className="text-gray-400 text-sm">Ready</p>
+                <p className="text-2xl font-bold">{stats.ready}</p>
               </div>
               <div className="bg-green-600/20 border border-green-600 rounded-lg p-4">
-                <p className="text-green-400 text-sm">Completed</p>
-                <p className="text-2xl font-bold">{stats.completed}</p>
+                <p className="text-green-400 text-sm">Answered</p>
+                <p className="text-2xl font-bold">{stats.answered}</p>
               </div>
-              <div className="bg-red-600/20 border border-red-600 rounded-lg p-4">
-                <p className="text-red-400 text-sm">DNC/Failed</p>
-                <p className="text-2xl font-bold">{stats.failed}</p>
+              <div className="bg-yellow-600/20 border border-yellow-600 rounded-lg p-4">
+                <p className="text-yellow-400 text-sm">No Answer</p>
+                <p className="text-2xl font-bold">{stats.noAnswer}</p>
+              </div>
+              <div className="bg-gray-600/20 border border-gray-500 rounded-lg p-4">
+                <p className="text-gray-400 text-sm">Exhausted</p>
+                <p className="text-2xl font-bold">{stats.exhausted}</p>
               </div>
             </div>
 
@@ -237,7 +300,7 @@ export default function Home() {
                     {Object.keys(fieldMapping).map(field => (
                       <div key={field}>
                         <label className="block text-sm text-gray-400 mb-1">
-                          {field.replace('_', ' ')}
+                          {field.replace('_', ' ')} {field === 'phone' && '*'}
                         </label>
                         <select
                           value={fieldMapping[field as keyof typeof fieldMapping]}
@@ -269,37 +332,80 @@ export default function Home() {
 
             {/* Contacts Table */}
             <div className="bg-gray-800 rounded-lg p-6">
-              <h2 className="text-xl font-semibold mb-4">Contacts</h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-semibold">Contacts</h2>
+                <div className="flex gap-2">
+                  <button
+                    onClick={selectAllReady}
+                    className="bg-gray-600 hover:bg-gray-500 px-3 py-1 rounded text-sm"
+                  >
+                    Select Ready
+                  </button>
+                  <button
+                    onClick={clearSelection}
+                    className="bg-gray-600 hover:bg-gray-500 px-3 py-1 rounded text-sm"
+                  >
+                    Clear
+                  </button>
+                  <button
+                    onClick={resetSelected}
+                    disabled={selectedContacts.size === 0}
+                    className="bg-gray-600 hover:bg-gray-500 disabled:bg-gray-700 disabled:text-gray-500 px-3 py-1 rounded text-sm"
+                  >
+                    Reset Selected
+                  </button>
+                  <button
+                    onClick={callSelected}
+                    disabled={calling || selectedContacts.size === 0}
+                    className="bg-green-600 hover:bg-green-700 disabled:bg-gray-600 px-4 py-1 rounded text-sm font-medium"
+                  >
+                    {calling ? 'Calling...' : `Call Selected (${selectedContacts.size})`}
+                  </button>
+                </div>
+              </div>
 
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-left text-gray-400 border-b border-gray-700">
+                      <th className="pb-3 w-8"></th>
                       <th className="pb-3">Name</th>
                       <th className="pb-3">Company</th>
                       <th className="pb-3">Phone</th>
                       <th className="pb-3">Status</th>
-                      <th className="pb-3">Attempts</th>
-                      <th className="pb-3">Outcome</th>
+                      <th className="pb-3">Calls</th>
                     </tr>
                   </thead>
                   <tbody>
                     {contacts.map(contact => (
-                      <tr key={contact.id} className="border-b border-gray-700/50">
+                      <tr
+                        key={contact.id}
+                        className={`border-b border-gray-700/50 ${contact.status === 'exhausted' ? 'opacity-50' : ''}`}
+                      >
+                        <td className="py-3">
+                          <input
+                            type="checkbox"
+                            checked={selectedContacts.has(contact.id)}
+                            onChange={() => toggleContact(contact.id)}
+                            disabled={contact.status === 'exhausted' || contact.status === 'answered' || contact.status === 'calling'}
+                            className="rounded bg-gray-700 border-gray-600"
+                          />
+                        </td>
                         <td className="py-3">{contact.first_name} {contact.last_name}</td>
                         <td className="py-3 text-gray-400">{contact.company}</td>
                         <td className="py-3 font-mono text-sm">{contact.phone}</td>
                         <td className="py-3">
-                          <span className={`px-2 py-1 rounded text-xs ${contact.status === 'completed' ? 'bg-green-600/30 text-green-400' :
-                              contact.status === 'pending' ? 'bg-yellow-600/30 text-yellow-400' :
-                                contact.status === 'calling' ? 'bg-blue-600/30 text-blue-400' :
-                                  'bg-red-600/30 text-red-400'
-                            }`}>
-                            {contact.status}
+                          <span className={`px-2 py-1 rounded text-xs ${getStatusStyle(contact.status)}`}>
+                            {contact.status.replace('_', ' ')}
                           </span>
                         </td>
-                        <td className="py-3">{contact.attempts}</td>
-                        <td className="py-3 text-gray-400">{contact.outcome || '-'}</td>
+                        <td className="py-3">
+                          {contact.call_count > 0 && (
+                            <span className="text-gray-400 text-xs">
+                              Called #{contact.call_count}
+                            </span>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

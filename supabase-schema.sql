@@ -1,5 +1,5 @@
--- TRUVO OUTBOUND CRM SCHEMA
--- Run this in Supabase SQL Editor
+-- TRUVO OUTBOUND SCHEMA
+-- Run this in Supabase SQL Editor for fresh setup
 
 -- Campaigns (calling rules)
 CREATE TABLE campaigns (
@@ -12,7 +12,7 @@ CREATE TABLE campaigns (
   call_window_start TIME DEFAULT '09:00',
   call_window_end TIME DEFAULT '17:00',
   timezone TEXT DEFAULT 'America/Chicago',
-  max_attempts INT DEFAULT 3,
+  max_attempts INT DEFAULT 2,
   retry_delay_minutes INT DEFAULT 30,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -28,9 +28,9 @@ CREATE TABLE contacts (
   location TEXT,
   industry TEXT,
   custom_data JSONB DEFAULT '{}',
-  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'queued', 'calling', 'completed', 'failed', 'dnc')),
-  outcome TEXT CHECK (outcome IN ('scheduled', 'not_interested', 'no_answer', 'voicemail', 'callback', 'wrong_number', NULL)),
-  attempts INT DEFAULT 0,
+  status TEXT DEFAULT 'ready' CHECK (status IN ('ready', 'calling', 'answered', 'no_answer', 'voicemail', 'failed', 'exhausted')),
+  outcome TEXT CHECK (outcome IN ('answered', 'voicemail', 'no_answer', 'failed', NULL)),
+  call_count INT DEFAULT 0,
   last_attempt_at TIMESTAMPTZ,
   next_attempt_at TIMESTAMPTZ DEFAULT NOW(),
   created_at TIMESTAMPTZ DEFAULT NOW()
@@ -51,18 +51,16 @@ CREATE TABLE call_logs (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Indexes for queue processing
-CREATE INDEX idx_contacts_queue ON contacts(campaign_id, status, next_attempt_at) 
-  WHERE status IN ('pending', 'failed');
+-- Indexes
 CREATE INDEX idx_contacts_campaign ON contacts(campaign_id);
 CREATE INDEX idx_call_logs_contact ON call_logs(contact_id);
 
--- Row Level Security (optional, for multi-tenant later)
+-- Row Level Security
 ALTER TABLE campaigns ENABLE ROW LEVEL SECURITY;
 ALTER TABLE contacts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE call_logs ENABLE ROW LEVEL SECURITY;
 
--- For now, allow all (you're the only user)
+-- Allow all (single user mode)
 CREATE POLICY "Allow all" ON campaigns FOR ALL USING (true);
 CREATE POLICY "Allow all" ON contacts FOR ALL USING (true);
 CREATE POLICY "Allow all" ON call_logs FOR ALL USING (true);

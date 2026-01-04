@@ -51,17 +51,3 @@ export async function createVapiCall(request: VapiCallRequest): Promise<VapiCall
 
   return response.json()
 }
-
-export async function getVapiCall(callId: string) {
-  const response = await fetch(`${VAPI_BASE_URL}/call/${callId}`, {
-    headers: {
-      'Authorization': `Bearer ${getApiKey()}`
-    }
-  })
-
-  if (!response.ok) {
-    throw new Error(`Vapi API error: ${response.status}`)
-  }
-
-  return response.json()
-}

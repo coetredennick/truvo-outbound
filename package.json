@@ -5,8 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
-    "queue": "npx tsx lib/queue-processor.ts"
+    "start": "next start"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",

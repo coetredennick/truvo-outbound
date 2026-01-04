@@ -1,11 +1,11 @@
 # Truvo Outbound
 
-AI-powered outbound calling platform. Import CSVs, queue leads, fire Vapi calls automatically.
+AI-powered outbound calling platform. Import CSVs, select contacts, fire Vapi calls manually.
 
 ## Architecture
 
 ```
-CSV Upload → Supabase DB → Queue Processor → Vapi API → Phone Calls
+CSV Upload → Supabase DB → Manual Selection → Vapi API → Phone Calls → Webhook → Status Update
 ```
 
 ## Quick Start
@@ -29,6 +29,8 @@ NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_KEY=your-service-key
 VAPI_API_KEY=your-vapi-api-key
+NEXT_PUBLIC_DEFAULT_ASSISTANT_ID=your-vapi-assistant-id
+NEXT_PUBLIC_DEFAULT_PHONE_NUMBER_ID=your-vapi-phone-number-id
 ```
 
 ### 3. Install & Run
@@ -40,15 +42,12 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000)
 
-### 4. Start Queue Processor
+### 4. Configure Vapi Webhook
 
-In a separate terminal:
-
-```bash
-npm run queue
+Set your webhook URL in Vapi Dashboard → Settings:
 ```
-
-This runs continuously and fires calls for active campaigns.
+https://your-domain.com/api/webhooks/vapi
+```
 
 ## Usage
 
@@ -56,7 +55,6 @@ This runs continuously and fires calls for active campaigns.
 
 1. Click "+ New Campaign"
 2. Name it
-3. Campaign starts paused by default
 
 ### Import Contacts
 
@@ -65,11 +63,22 @@ This runs continuously and fires calls for active campaigns.
 3. Map fields (phone is required)
 4. Click Import
 
-### Start Calling
+### Make Calls
 
-1. Toggle campaign to "Active"
-2. Queue processor will start firing calls within calling window (9am-5pm by default)
-3. Watch contacts move from "pending" → "completed"
+1. Select contacts using checkboxes
+2. Click "Call Selected"
+3. Webhook updates status: `ready` → `calling` → `answered`/`no_answer`/`voicemail`
+
+### Status Flow
+
+| Status | Meaning |
+|--------|---------|
+| `ready` | Available to call |
+| `calling` | Call in progress |
+| `answered` | Human picked up |
+| `no_answer` | No answer |
+| `voicemail` | Hit voicemail |
+| `exhausted` | Max 2 attempts reached |
 
 ## CSV Format
 
@@ -81,22 +90,9 @@ Your CSV should have columns like:
 
 The importer will auto-detect common column names.
 
-## Configuration
+## Vapi Variables
 
-### Campaign Settings (in Supabase)
-
-| Field | Default | Description |
-|-------|---------|-------------|
-| `calls_per_minute` | 5 | Max concurrent calls per minute |
-| `call_window_start` | 09:00 | Start of calling hours |
-| `call_window_end` | 17:00 | End of calling hours |
-| `timezone` | America/Chicago | Timezone for call window |
-| `max_attempts` | 3 | Max call attempts per contact |
-| `retry_delay_minutes` | 30 | Wait time between retries |
-
-### Vapi Variables
-
-The queue processor sends these to Vapi:
+These variables are sent to your Vapi assistant:
 
 ```javascript
 {
@@ -111,28 +107,11 @@ Make sure your Vapi assistant prompt uses `{{leadName}}`, `{{companyName}}`, etc
 
 ## Deployment
 
-### Vercel (Frontend)
+### Vercel
 
 ```bash
+npm i -g vercel
 vercel
 ```
 
-Set environment variables in Vercel dashboard.
-
-### Queue Processor
-
-Run on Railway, Render, or any server that stays alive:
-
-```bash
-npm run queue
-```
-
-Or use a cron job to run periodically.
-
-## Next Steps
-
-- [ ] Add Vapi webhook handler to update outcomes
-- [ ] Add call recordings playback
-- [ ] Add real-time status updates
-- [ ] Add client portal (multi-tenant)
-- [ ] Add scheduling tool integration
+Set environment variables in Vercel dashboard, then configure your Vapi webhook URL.

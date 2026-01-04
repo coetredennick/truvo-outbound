@@ -31,9 +31,9 @@ export interface Contact {
   location: string
   industry: string
   custom_data: Record<string, any>
-  status: 'pending' | 'queued' | 'calling' | 'completed' | 'failed' | 'dnc'
-  outcome: string | null
-  attempts: number
+  status: 'ready' | 'calling' | 'answered' | 'no_answer' | 'voicemail' | 'failed' | 'exhausted'
+  outcome: 'answered' | 'voicemail' | 'no_answer' | 'failed' | null
+  call_count: number
   last_attempt_at: string | null
   next_attempt_at: string
   created_at: string
