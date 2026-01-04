@@ -10,6 +10,8 @@ CREATE TABLE contacts (
   company TEXT,
   location TEXT,
   industry TEXT,
+  website TEXT,
+  details TEXT,
   custom_data JSONB DEFAULT '{}',
   status TEXT DEFAULT 'ready' CHECK (status IN ('ready', 'calling', 'answered', 'no_answer', 'failed', 'exhausted')),
   outcome TEXT CHECK (outcome IN ('answered', 'no_answer', NULL)),

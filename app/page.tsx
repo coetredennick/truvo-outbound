@@ -14,7 +14,9 @@ export default function Home() {
     last_name: '',
     company: '',
     location: '',
-    industry: ''
+    industry: '',
+    website: '',
+    details: ''
   })
   const [loading, setLoading] = useState(false)
   const [calling, setCalling] = useState(false)
@@ -68,6 +70,8 @@ export default function Home() {
           if (lower.includes('company') || lower.includes('business')) newMapping.company = h
           if (lower.includes('city') || lower.includes('location') || lower.includes('state')) newMapping.location = h
           if (lower.includes('industry') || lower.includes('type')) newMapping.industry = h
+          if (lower.includes('website') || lower.includes('url') || lower.includes('site')) newMapping.website = h
+          if (lower.includes('details') || lower.includes('notes') || lower.includes('description')) newMapping.details = h
         })
 
         setFieldMapping(newMapping)
@@ -79,18 +83,33 @@ export default function Home() {
     if (csvData.length === 0) return
     setLoading(true)
 
+    const mappedFields = Object.values(fieldMapping).filter(Boolean)
+
     const contactsToInsert = csvData
       .filter(row => row[fieldMapping.phone])
-      .map(row => ({
-        phone: row[fieldMapping.phone],
-        first_name: row[fieldMapping.first_name] || '',
-        last_name: row[fieldMapping.last_name] || '',
-        company: row[fieldMapping.company] || '',
-        location: row[fieldMapping.location] || '',
-        industry: row[fieldMapping.industry] || '',
-        status: 'ready',
-        call_count: 0
-      }))
+      .map(row => {
+        // Collect unmapped columns into custom_data
+        const custom_data: Record<string, any> = {}
+        Object.keys(row).forEach(key => {
+          if (!mappedFields.includes(key) && row[key]) {
+            custom_data[key] = row[key]
+          }
+        })
+
+        return {
+          phone: row[fieldMapping.phone],
+          first_name: row[fieldMapping.first_name] || '',
+          last_name: row[fieldMapping.last_name] || '',
+          company: row[fieldMapping.company] || '',
+          location: row[fieldMapping.location] || '',
+          industry: row[fieldMapping.industry] || '',
+          website: row[fieldMapping.website] || '',
+          details: row[fieldMapping.details] || '',
+          custom_data,
+          status: 'ready',
+          call_count: 0
+        }
+      })
 
     const { error } = await supabase.from('contacts').insert(contactsToInsert)
 
@@ -329,7 +348,10 @@ export default function Home() {
                   <th className="pb-3 w-8"></th>
                   <th className="pb-3">Name</th>
                   <th className="pb-3">Company</th>
+                  <th className="pb-3">Location</th>
+                  <th className="pb-3">Industry</th>
                   <th className="pb-3">Phone</th>
+                  <th className="pb-3">Website</th>
                   <th className="pb-3">Status</th>
                   <th className="pb-3">Calls</th>
                 </tr>
@@ -349,9 +371,31 @@ export default function Home() {
                         className="rounded bg-gray-700 border-gray-600"
                       />
                     </td>
-                    <td className="py-3">{contact.first_name} {contact.last_name}</td>
+                    <td className="py-3">
+                      <div>{contact.first_name} {contact.last_name}</div>
+                      {contact.details && (
+                        <div className="text-xs text-gray-500 truncate max-w-48" title={contact.details}>
+                          {contact.details}
+                        </div>
+                      )}
+                    </td>
                     <td className="py-3 text-gray-400">{contact.company}</td>
+                    <td className="py-3 text-gray-400">{contact.location}</td>
+                    <td className="py-3 text-gray-400">{contact.industry}</td>
                     <td className="py-3 font-mono text-sm">{contact.phone}</td>
+                    <td className="py-3">
+                      {contact.website && (
+                        <a
+                          href={contact.website.startsWith('http') ? contact.website : `https://${contact.website}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-400 hover:text-blue-300 truncate block max-w-32"
+                          title={contact.website}
+                        >
+                          {contact.website.replace(/^https?:\/\//, '')}
+                        </a>
+                      )}
+                    </td>
                     <td className="py-3">
                       <span className={`px-2 py-1 rounded text-xs ${getStatusStyle(contact.status)}`}>
                         {contact.status.replace('_', ' ')}

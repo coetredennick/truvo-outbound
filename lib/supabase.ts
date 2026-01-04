@@ -14,9 +14,11 @@ export interface Contact {
   company: string
   location: string
   industry: string
+  website: string
+  details: string
   custom_data: Record<string, any>
-  status: 'ready' | 'calling' | 'answered' | 'no_answer' | 'voicemail' | 'failed' | 'exhausted'
-  outcome: 'answered' | 'voicemail' | 'no_answer' | 'failed' | null
+  status: 'ready' | 'calling' | 'answered' | 'no_answer' | 'failed' | 'exhausted'
+  outcome: 'answered' | 'no_answer' | null
   call_count: number
   last_attempt_at: string | null
   created_at: string
