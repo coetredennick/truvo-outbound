@@ -268,18 +268,21 @@ export default function Home() {
             <h2 className="text-xl font-semibold">Contacts</h2>
             <div className="flex gap-2">
               <button
+                type="button"
                 onClick={selectAllReady}
                 className="bg-gray-600 hover:bg-gray-500 px-3 py-1 rounded text-sm"
               >
                 Select Ready
               </button>
               <button
+                type="button"
                 onClick={clearSelection}
                 className="bg-gray-600 hover:bg-gray-500 px-3 py-1 rounded text-sm"
               >
                 Clear
               </button>
               <button
+                type="button"
                 onClick={resetSelected}
                 disabled={selectedContacts.size === 0}
                 className="bg-gray-600 hover:bg-gray-500 disabled:bg-gray-700 disabled:text-gray-500 px-3 py-1 rounded text-sm"
@@ -287,6 +290,7 @@ export default function Home() {
                 Reset Selected
               </button>
               <button
+                type="button"
                 onClick={callSelected}
                 disabled={calling || selectedContacts.size === 0}
                 className="bg-green-600 hover:bg-green-700 disabled:bg-gray-600 px-4 py-1 rounded text-sm font-medium"
