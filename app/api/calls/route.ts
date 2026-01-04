@@ -3,6 +3,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createVapiCall } from '@/lib/vapi'
 import type { Contact } from '@/lib/supabase'
 
+// Allow up to 5 minutes for batch calls with delays
+export const maxDuration = 300
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_KEY!
@@ -10,6 +13,10 @@ const supabase = createClient(
 
 const ASSISTANT_ID = process.env.NEXT_PUBLIC_DEFAULT_ASSISTANT_ID!
 const PHONE_NUMBER_ID = process.env.NEXT_PUBLIC_DEFAULT_PHONE_NUMBER_ID!
+const CALL_DELAY_MS = 30000 // 30 seconds between calls
+
+// Helper to delay execution
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
 // Format phone to E.164
 function formatPhone(phone: string): string {
@@ -77,6 +84,11 @@ export async function POST(request: NextRequest) {
           success: true,
           vapiCallId: vapiResponse.id
         })
+
+        // Wait 30 seconds before next call (except for last one)
+        if (contacts.indexOf(contact) < contacts.length - 1) {
+          await delay(CALL_DELAY_MS)
+        }
 
       } catch (err) {
         console.error(`Error calling contact ${contact.id}:`, err)
