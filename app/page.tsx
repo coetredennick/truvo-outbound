@@ -2,11 +2,9 @@
 
 import { useState, useEffect } from 'react'
 import Papa from 'papaparse'
-import { supabase, Campaign, Contact } from '@/lib/supabase'
+import { supabase, Contact } from '@/lib/supabase'
 
 export default function Home() {
-  const [campaigns, setCampaigns] = useState<Campaign[]>([])
-  const [selectedCampaign, setSelectedCampaign] = useState<string>('')
   const [contacts, setContacts] = useState<Contact[]>([])
   const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set())
   const [csvData, setCsvData] = useState<any[]>([])
@@ -22,29 +20,15 @@ export default function Home() {
   const [calling, setCalling] = useState(false)
   const [stats, setStats] = useState({ ready: 0, answered: 0, noAnswer: 0, exhausted: 0 })
 
-  // Load campaigns on mount
   useEffect(() => {
-    loadCampaigns()
+    loadContacts()
+    loadStats()
   }, [])
-
-  // Load contacts when campaign changes
-  useEffect(() => {
-    if (selectedCampaign) {
-      loadContacts()
-      loadStats()
-    }
-  }, [selectedCampaign])
-
-  async function loadCampaigns() {
-    const { data } = await supabase.from('campaigns').select('*').order('created_at', { ascending: false })
-    if (data) setCampaigns(data)
-  }
 
   async function loadContacts() {
     const { data } = await supabase
       .from('contacts')
       .select('*')
-      .eq('campaign_id', selectedCampaign)
       .order('created_at', { ascending: false })
       .limit(200)
     if (data) setContacts(data)
@@ -54,32 +38,14 @@ export default function Home() {
     const { data } = await supabase
       .from('contacts')
       .select('status')
-      .eq('campaign_id', selectedCampaign)
 
     if (data) {
       setStats({
         ready: data.filter(c => c.status === 'ready').length,
         answered: data.filter(c => c.status === 'answered').length,
-        noAnswer: data.filter(c => ['no_answer', 'voicemail', 'failed'].includes(c.status)).length,
+        noAnswer: data.filter(c => ['no_answer', 'failed'].includes(c.status)).length,
         exhausted: data.filter(c => c.status === 'exhausted').length
       })
-    }
-  }
-
-  async function createCampaign() {
-    const name = prompt('Campaign name:')
-    if (!name) return
-
-    const { data } = await supabase.from('campaigns').insert({
-      name,
-      assistant_id: process.env.NEXT_PUBLIC_DEFAULT_ASSISTANT_ID!,
-      phone_number_id: process.env.NEXT_PUBLIC_DEFAULT_PHONE_NUMBER_ID!,
-      status: 'paused'
-    }).select().single()
-
-    if (data) {
-      setCampaigns([data, ...campaigns])
-      setSelectedCampaign(data.id)
     }
   }
 
@@ -110,13 +76,12 @@ export default function Home() {
   }
 
   async function importContacts() {
-    if (!selectedCampaign || csvData.length === 0) return
+    if (csvData.length === 0) return
     setLoading(true)
 
     const contactsToInsert = csvData
       .filter(row => row[fieldMapping.phone])
       .map(row => ({
-        campaign_id: selectedCampaign,
         phone: row[fieldMapping.phone],
         first_name: row[fieldMapping.first_name] || '',
         last_name: row[fieldMapping.last_name] || '',
@@ -169,8 +134,7 @@ export default function Home() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          contactIds: Array.from(selectedContacts),
-          campaignId: selectedCampaign
+          contactIds: Array.from(selectedContacts)
         })
       })
 
@@ -210,7 +174,6 @@ export default function Home() {
       case 'calling': return 'bg-blue-600/30 text-blue-400 animate-pulse'
       case 'answered': return 'bg-green-600/30 text-green-400'
       case 'no_answer': return 'bg-yellow-600/30 text-yellow-400'
-      case 'voicemail': return 'bg-orange-600/30 text-orange-400'
       case 'failed': return 'bg-red-600/30 text-red-400'
       case 'exhausted': return 'bg-gray-600/20 text-gray-500 line-through'
       default: return 'bg-gray-600/30 text-gray-400'
@@ -218,202 +181,169 @@ export default function Home() {
   }
 
   const csvHeaders = csvData[0] ? Object.keys(csvData[0]) : []
-  const callableContacts = contacts.filter(c => ['ready', 'no_answer', 'voicemail', 'failed'].includes(c.status) && c.call_count < 2)
 
   return (
     <main className="min-h-screen bg-gray-900 text-white p-8">
       <div className="max-w-6xl mx-auto">
         <h1 className="text-3xl font-bold mb-8">Truvo Outbound</h1>
 
-        {/* Campaign Selection */}
-        <div className="bg-gray-800 rounded-lg p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold">Campaigns</h2>
-            <button
-              onClick={createCampaign}
-              className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded"
-            >
-              + New Campaign
-            </button>
+        {/* Stats */}
+        <div className="grid grid-cols-4 gap-4 mb-6">
+          <div className="bg-gray-600/20 border border-gray-600 rounded-lg p-4">
+            <p className="text-gray-400 text-sm">Ready</p>
+            <p className="text-2xl font-bold">{stats.ready}</p>
           </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {campaigns.map(c => (
-              <div
-                key={c.id}
-                onClick={() => setSelectedCampaign(c.id)}
-                className={`p-4 rounded-lg cursor-pointer border-2 ${selectedCampaign === c.id
-                    ? 'border-blue-500 bg-gray-700'
-                    : 'border-gray-600 bg-gray-750 hover:border-gray-500'
-                  }`}
-              >
-                <h3 className="font-medium">{c.name}</h3>
-              </div>
-            ))}
+          <div className="bg-green-600/20 border border-green-600 rounded-lg p-4">
+            <p className="text-green-400 text-sm">Answered</p>
+            <p className="text-2xl font-bold">{stats.answered}</p>
+          </div>
+          <div className="bg-yellow-600/20 border border-yellow-600 rounded-lg p-4">
+            <p className="text-yellow-400 text-sm">No Answer</p>
+            <p className="text-2xl font-bold">{stats.noAnswer}</p>
+          </div>
+          <div className="bg-gray-600/20 border border-gray-500 rounded-lg p-4">
+            <p className="text-gray-400 text-sm">Exhausted</p>
+            <p className="text-2xl font-bold">{stats.exhausted}</p>
           </div>
         </div>
 
-        {selectedCampaign && (
-          <>
-            {/* Stats */}
-            <div className="grid grid-cols-4 gap-4 mb-6">
-              <div className="bg-gray-600/20 border border-gray-600 rounded-lg p-4">
-                <p className="text-gray-400 text-sm">Ready</p>
-                <p className="text-2xl font-bold">{stats.ready}</p>
-              </div>
-              <div className="bg-green-600/20 border border-green-600 rounded-lg p-4">
-                <p className="text-green-400 text-sm">Answered</p>
-                <p className="text-2xl font-bold">{stats.answered}</p>
-              </div>
-              <div className="bg-yellow-600/20 border border-yellow-600 rounded-lg p-4">
-                <p className="text-yellow-400 text-sm">No Answer</p>
-                <p className="text-2xl font-bold">{stats.noAnswer}</p>
-              </div>
-              <div className="bg-gray-600/20 border border-gray-500 rounded-lg p-4">
-                <p className="text-gray-400 text-sm">Exhausted</p>
-                <p className="text-2xl font-bold">{stats.exhausted}</p>
-              </div>
-            </div>
+        {/* CSV Import */}
+        <div className="bg-gray-800 rounded-lg p-6 mb-6">
+          <h2 className="text-xl font-semibold mb-4">Import Contacts</h2>
 
-            {/* CSV Import */}
-            <div className="bg-gray-800 rounded-lg p-6 mb-6">
-              <h2 className="text-xl font-semibold mb-4">Import Contacts</h2>
+          <input
+            type="file"
+            accept=".csv"
+            onChange={handleFileUpload}
+            className="mb-4 block w-full text-sm text-gray-400
+              file:mr-4 file:py-2 file:px-4
+              file:rounded file:border-0
+              file:bg-blue-600 file:text-white
+              hover:file:bg-blue-700"
+          />
 
-              <input
-                type="file"
-                accept=".csv"
-                onChange={handleFileUpload}
-                className="mb-4 block w-full text-sm text-gray-400
-                  file:mr-4 file:py-2 file:px-4
-                  file:rounded file:border-0
-                  file:bg-blue-600 file:text-white
-                  hover:file:bg-blue-700"
-              />
+          {csvData.length > 0 && (
+            <>
+              <p className="text-sm text-gray-400 mb-4">
+                Found {csvData.length} rows. Map your fields:
+              </p>
 
-              {csvData.length > 0 && (
-                <>
-                  <p className="text-sm text-gray-400 mb-4">
-                    Found {csvData.length} rows. Map your fields:
-                  </p>
-
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
-                    {Object.keys(fieldMapping).map(field => (
-                      <div key={field}>
-                        <label className="block text-sm text-gray-400 mb-1">
-                          {field.replace('_', ' ')} {field === 'phone' && '*'}
-                        </label>
-                        <select
-                          value={fieldMapping[field as keyof typeof fieldMapping]}
-                          onChange={(e) => setFieldMapping({
-                            ...fieldMapping,
-                            [field]: e.target.value
-                          })}
-                          className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2"
-                        >
-                          <option value="">-- Select --</option>
-                          {csvHeaders.map(h => (
-                            <option key={h} value={h}>{h}</option>
-                          ))}
-                        </select>
-                      </div>
-                    ))}
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
+                {Object.keys(fieldMapping).map(field => (
+                  <div key={field}>
+                    <label className="block text-sm text-gray-400 mb-1">
+                      {field.replace('_', ' ')} {field === 'phone' && '*'}
+                    </label>
+                    <select
+                      value={fieldMapping[field as keyof typeof fieldMapping]}
+                      onChange={(e) => setFieldMapping({
+                        ...fieldMapping,
+                        [field]: e.target.value
+                      })}
+                      className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2"
+                    >
+                      <option value="">-- Select --</option>
+                      {csvHeaders.map(h => (
+                        <option key={h} value={h}>{h}</option>
+                      ))}
+                    </select>
                   </div>
-
-                  <button
-                    onClick={importContacts}
-                    disabled={loading || !fieldMapping.phone}
-                    className="bg-green-600 hover:bg-green-700 disabled:bg-gray-600 px-6 py-2 rounded"
-                  >
-                    {loading ? 'Importing...' : `Import ${csvData.length} Contacts`}
-                  </button>
-                </>
-              )}
-            </div>
-
-            {/* Contacts Table */}
-            <div className="bg-gray-800 rounded-lg p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-semibold">Contacts</h2>
-                <div className="flex gap-2">
-                  <button
-                    onClick={selectAllReady}
-                    className="bg-gray-600 hover:bg-gray-500 px-3 py-1 rounded text-sm"
-                  >
-                    Select Ready
-                  </button>
-                  <button
-                    onClick={clearSelection}
-                    className="bg-gray-600 hover:bg-gray-500 px-3 py-1 rounded text-sm"
-                  >
-                    Clear
-                  </button>
-                  <button
-                    onClick={resetSelected}
-                    disabled={selectedContacts.size === 0}
-                    className="bg-gray-600 hover:bg-gray-500 disabled:bg-gray-700 disabled:text-gray-500 px-3 py-1 rounded text-sm"
-                  >
-                    Reset Selected
-                  </button>
-                  <button
-                    onClick={callSelected}
-                    disabled={calling || selectedContacts.size === 0}
-                    className="bg-green-600 hover:bg-green-700 disabled:bg-gray-600 px-4 py-1 rounded text-sm font-medium"
-                  >
-                    {calling ? 'Calling...' : `Call Selected (${selectedContacts.size})`}
-                  </button>
-                </div>
+                ))}
               </div>
 
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-left text-gray-400 border-b border-gray-700">
-                      <th className="pb-3 w-8"></th>
-                      <th className="pb-3">Name</th>
-                      <th className="pb-3">Company</th>
-                      <th className="pb-3">Phone</th>
-                      <th className="pb-3">Status</th>
-                      <th className="pb-3">Calls</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {contacts.map(contact => (
-                      <tr
-                        key={contact.id}
-                        className={`border-b border-gray-700/50 ${contact.status === 'exhausted' ? 'opacity-50' : ''}`}
-                      >
-                        <td className="py-3">
-                          <input
-                            type="checkbox"
-                            checked={selectedContacts.has(contact.id)}
-                            onChange={() => toggleContact(contact.id)}
-                            disabled={contact.status === 'exhausted' || contact.status === 'answered' || contact.status === 'calling'}
-                            className="rounded bg-gray-700 border-gray-600"
-                          />
-                        </td>
-                        <td className="py-3">{contact.first_name} {contact.last_name}</td>
-                        <td className="py-3 text-gray-400">{contact.company}</td>
-                        <td className="py-3 font-mono text-sm">{contact.phone}</td>
-                        <td className="py-3">
-                          <span className={`px-2 py-1 rounded text-xs ${getStatusStyle(contact.status)}`}>
-                            {contact.status.replace('_', ' ')}
-                          </span>
-                        </td>
-                        <td className="py-3">
-                          {contact.call_count > 0 && (
-                            <span className="text-gray-400 text-xs">
-                              Called #{contact.call_count}
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <button
+                onClick={importContacts}
+                disabled={loading || !fieldMapping.phone}
+                className="bg-green-600 hover:bg-green-700 disabled:bg-gray-600 px-6 py-2 rounded"
+              >
+                {loading ? 'Importing...' : `Import ${csvData.length} Contacts`}
+              </button>
+            </>
+          )}
+        </div>
+
+        {/* Contacts Table */}
+        <div className="bg-gray-800 rounded-lg p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold">Contacts</h2>
+            <div className="flex gap-2">
+              <button
+                onClick={selectAllReady}
+                className="bg-gray-600 hover:bg-gray-500 px-3 py-1 rounded text-sm"
+              >
+                Select Ready
+              </button>
+              <button
+                onClick={clearSelection}
+                className="bg-gray-600 hover:bg-gray-500 px-3 py-1 rounded text-sm"
+              >
+                Clear
+              </button>
+              <button
+                onClick={resetSelected}
+                disabled={selectedContacts.size === 0}
+                className="bg-gray-600 hover:bg-gray-500 disabled:bg-gray-700 disabled:text-gray-500 px-3 py-1 rounded text-sm"
+              >
+                Reset Selected
+              </button>
+              <button
+                onClick={callSelected}
+                disabled={calling || selectedContacts.size === 0}
+                className="bg-green-600 hover:bg-green-700 disabled:bg-gray-600 px-4 py-1 rounded text-sm font-medium"
+              >
+                {calling ? 'Calling...' : `Call Selected (${selectedContacts.size})`}
+              </button>
             </div>
-          </>
-        )}
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-gray-400 border-b border-gray-700">
+                  <th className="pb-3 w-8"></th>
+                  <th className="pb-3">Name</th>
+                  <th className="pb-3">Company</th>
+                  <th className="pb-3">Phone</th>
+                  <th className="pb-3">Status</th>
+                  <th className="pb-3">Calls</th>
+                </tr>
+              </thead>
+              <tbody>
+                {contacts.map(contact => (
+                  <tr
+                    key={contact.id}
+                    className={`border-b border-gray-700/50 ${contact.status === 'exhausted' ? 'opacity-50' : ''}`}
+                  >
+                    <td className="py-3">
+                      <input
+                        type="checkbox"
+                        checked={selectedContacts.has(contact.id)}
+                        onChange={() => toggleContact(contact.id)}
+                        disabled={contact.status === 'exhausted' || contact.status === 'answered' || contact.status === 'calling'}
+                        className="rounded bg-gray-700 border-gray-600"
+                      />
+                    </td>
+                    <td className="py-3">{contact.first_name} {contact.last_name}</td>
+                    <td className="py-3 text-gray-400">{contact.company}</td>
+                    <td className="py-3 font-mono text-sm">{contact.phone}</td>
+                    <td className="py-3">
+                      <span className={`px-2 py-1 rounded text-xs ${getStatusStyle(contact.status)}`}>
+                        {contact.status.replace('_', ' ')}
+                      </span>
+                    </td>
+                    <td className="py-3">
+                      {contact.call_count > 0 && (
+                        <span className="text-gray-400 text-xs">
+                          #{contact.call_count}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </main>
   )

@@ -1,12 +1,15 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { createVapiCall } from '@/lib/vapi'
-import type { Contact, Campaign } from '@/lib/supabase'
+import type { Contact } from '@/lib/supabase'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_KEY!
 )
+
+const ASSISTANT_ID = process.env.NEXT_PUBLIC_DEFAULT_ASSISTANT_ID!
+const PHONE_NUMBER_ID = process.env.NEXT_PUBLIC_DEFAULT_PHONE_NUMBER_ID!
 
 // Format phone to E.164
 function formatPhone(phone: string): string {
@@ -18,21 +21,10 @@ function formatPhone(phone: string): string {
 
 export async function POST(request: NextRequest) {
   try {
-    const { contactIds, campaignId } = await request.json()
+    const { contactIds } = await request.json()
 
     if (!contactIds || !Array.isArray(contactIds) || contactIds.length === 0) {
       return NextResponse.json({ error: 'No contacts selected' }, { status: 400 })
-    }
-
-    // Get campaign for assistant/phone config
-    const { data: campaign, error: campaignError } = await supabase
-      .from('campaigns')
-      .select('*')
-      .eq('id', campaignId)
-      .single()
-
-    if (campaignError || !campaign) {
-      return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
     }
 
     // Get contacts
@@ -49,7 +41,7 @@ export async function POST(request: NextRequest) {
 
     for (const contact of contacts as Contact[]) {
       try {
-        // 1. Increment call_count and set status to 'calling' FIRST (before API call)
+        // 1. Increment call_count and set status to 'calling' FIRST
         const newCallCount = contact.call_count + 1
         await supabase
           .from('contacts')
@@ -62,8 +54,8 @@ export async function POST(request: NextRequest) {
 
         // 2. Fire the Vapi call
         const vapiResponse = await createVapiCall({
-          assistantId: (campaign as Campaign).assistant_id,
-          phoneNumberId: (campaign as Campaign).phone_number_id,
+          assistantId: ASSISTANT_ID,
+          phoneNumberId: PHONE_NUMBER_ID,
           customerNumber: formatPhone(contact.phone),
           variables: {
             leadName: contact.first_name || 'there',
@@ -76,7 +68,6 @@ export async function POST(request: NextRequest) {
         // 3. Create call log entry
         await supabase.from('call_logs').insert({
           contact_id: contact.id,
-          campaign_id: campaignId,
           vapi_call_id: vapiResponse.id,
           status: 'initiated'
         })

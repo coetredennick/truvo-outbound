@@ -8,20 +8,15 @@ const supabase = createClient(
 
 const MAX_ATTEMPTS = 2
 
-// Map Vapi endedReason to contact status
-function mapEndedReasonToStatus(endedReason: string): 'answered' | 'no_answer' | 'voicemail' | 'failed' {
+// Map Vapi endedReason to simple status: answered or no_answer
+function mapEndedReasonToStatus(endedReason: string): 'answered' | 'no_answer' {
   switch (endedReason) {
     case 'customer-ended-call':
     case 'assistant-ended-call':
     case 'assistant-ended-call-after-message-spoken':
       return 'answered'
-    case 'voicemail':
-      return 'voicemail'
-    case 'customer-did-not-answer':
-    case 'customer-busy':
-      return 'no_answer'
     default:
-      return 'failed'
+      return 'no_answer'
   }
 }
 
@@ -40,9 +35,6 @@ export async function POST(request: NextRequest) {
     const vapiCallId = message.call?.id
     const endedReason = message.endedReason
     const duration = message.call?.duration || message.durationSeconds || 0
-    const transcript = message.artifact?.transcript || ''
-    const recordingUrl = message.artifact?.recording?.url || ''
-    const cost = message.cost || 0
 
     if (!vapiCallId) {
       console.error('No call ID in webhook payload')
@@ -64,16 +56,13 @@ export async function POST(request: NextRequest) {
     const status = mapEndedReasonToStatus(endedReason)
     const contact = callLog.contacts
 
-    // Update call log with results
+    // Update call log: status + duration
     await supabase
       .from('call_logs')
       .update({
-        status: endedReason,
+        status: status,
         ended_reason: endedReason,
-        duration_seconds: Math.round(duration),
-        transcript,
-        recording_url: recordingUrl,
-        cost
+        duration_seconds: Math.round(duration)
       })
       .eq('id', callLog.id)
 
