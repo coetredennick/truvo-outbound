@@ -122,7 +122,6 @@ export default function Home() {
   }
 
   function clearSelection() {
-    alert('Clearing ' + selectedContacts.size + ' selections')
     setSelectedContacts(new Set())
   }
 
@@ -280,7 +279,7 @@ export default function Home() {
                 onClick={clearSelection}
                 className="bg-gray-600 hover:bg-gray-500 px-3 py-1 rounded text-sm"
               >
-                Clear
+                Deselect All
               </button>
               <button
                 type="button"
