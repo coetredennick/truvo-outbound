@@ -42,6 +42,17 @@ export async function POST(request: NextRequest) {
 
     for (let i = 0; i < contacts.length; i++) {
       const contact = contacts[i] as Contact
+
+      // Skip contacts that shouldn't be called
+      if (['exhausted', 'answered', 'calling'].includes(contact.status)) {
+        results.push({
+          id: contact.id,
+          success: false,
+          error: `Skipped: status is ${contact.status}`
+        })
+        continue
+      }
+
       try {
         // Schedule call: first one now, rest staggered 30s apart
         const scheduledAt = i === 0
@@ -90,10 +101,13 @@ export async function POST(request: NextRequest) {
       } catch (err) {
         console.error(`Error calling contact ${contact.id}:`, err)
 
-        // Mark as failed if call didn't go through
+        // Rollback: restore original call_count and set status to failed
         await supabase
           .from('contacts')
-          .update({ status: 'failed' })
+          .update({
+            status: 'failed',
+            call_count: contact.call_count  // Restore original count
+          })
           .eq('id', contact.id)
 
         results.push({

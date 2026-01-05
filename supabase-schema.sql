@@ -33,6 +33,7 @@ CREATE TABLE call_logs (
 
 -- Indexes
 CREATE INDEX idx_call_logs_contact ON call_logs(contact_id);
+CREATE INDEX idx_call_logs_vapi_call_id ON call_logs(vapi_call_id);
 
 -- Row Level Security
 ALTER TABLE contacts ENABLE ROW LEVEL SECURITY;
