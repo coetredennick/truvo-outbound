@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { notifyLongCall, notifyVapiError } from '@/lib/notify'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -81,9 +82,21 @@ export async function POST(request: NextRequest) {
       })
       .eq('id', callLog.contact_id)
 
+    // Notify if call was longer than 30 seconds
+    if (duration > 30) {
+      await notifyLongCall(contact, Math.round(duration))
+    }
+
     return NextResponse.json({ received: true, status: finalStatus })
   } catch (error) {
     console.error('Webhook error:', error)
+
+    // Notify of Vapi error
+    await notifyVapiError(
+      error instanceof Error ? error.message : 'Unknown error',
+      { source: 'webhook' }
+    )
+
     // Always return 200 per Vapi requirements
     return NextResponse.json({ received: true, error: 'Processing failed' })
   }

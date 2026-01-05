@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { createVapiCall } from '@/lib/vapi'
+import { notifyVapiError } from '@/lib/notify'
 import type { Contact } from '@/lib/supabase'
 
 const supabase = createClient(
@@ -100,6 +101,12 @@ export async function POST(request: NextRequest) {
 
       } catch (err) {
         console.error(`Error calling contact ${contact.id}:`, err)
+
+        // Notify of Vapi error
+        await notifyVapiError(
+          err instanceof Error ? err.message : 'Unknown error',
+          { source: 'calls', contactId: contact.id, phone: contact.phone }
+        )
 
         // Rollback: restore original call_count and set status to failed
         await supabase
