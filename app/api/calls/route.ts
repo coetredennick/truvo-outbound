@@ -89,6 +89,12 @@ export async function POST(request: NextRequest) {
           .eq('id', contact.id)
 
         // 2. Fire the Vapi call (with optional scheduledAt)
+        console.log('Calling Vapi with:', {
+          assistantId: ASSISTANT_ID,
+          phoneNumberId: PHONE_NUMBER_ID,
+          customerNumber: formattedPhone,
+          scheduledAt
+        })
         const vapiResponse = await createVapiCall({
           assistantId: ASSISTANT_ID,
           phoneNumberId: PHONE_NUMBER_ID,
@@ -118,6 +124,7 @@ export async function POST(request: NextRequest) {
 
       } catch (err) {
         console.error(`Error calling contact ${contact.id}:`, err)
+        console.error('Full error:', JSON.stringify(err, Object.getOwnPropertyNames(err)))
 
         // Notify of Vapi error
         await notifyVapiError(
