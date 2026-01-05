@@ -11,7 +11,6 @@ const supabase = createClient(
 
 const ASSISTANT_ID = process.env.NEXT_PUBLIC_DEFAULT_ASSISTANT_ID!
 const PHONE_NUMBER_ID = process.env.NEXT_PUBLIC_DEFAULT_PHONE_NUMBER_ID!
-const CALL_INTERVAL_MS = 30000 // 30 seconds between calls
 
 // Format phone to E.164, strip all non-digits including Unicode junk
 function formatPhone(phone: string): string | null {
@@ -45,7 +44,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Contacts not found' }, { status: 404 })
     }
 
-    const results: { id: string; success: boolean; error?: string; vapiCallId?: string; scheduledAt?: string }[] = []
+    const results: { id: string; success: boolean; error?: string; vapiCallId?: string }[] = []
 
     for (let i = 0; i < contacts.length; i++) {
       const contact = contacts[i] as Contact
@@ -72,10 +71,6 @@ export async function POST(request: NextRequest) {
       }
 
       try {
-        // Schedule call: first one now, rest staggered 30s apart
-        const scheduledAt = i === 0
-          ? undefined  // First call fires immediately
-          : new Date(Date.now() + (i * CALL_INTERVAL_MS)).toISOString()
 
         // 1. Increment call_count and set status to 'calling' FIRST
         const newCallCount = contact.call_count + 1
@@ -88,18 +83,16 @@ export async function POST(request: NextRequest) {
           })
           .eq('id', contact.id)
 
-        // 2. Fire the Vapi call (with optional scheduledAt)
+        // 2. Fire the Vapi call
         console.log('Calling Vapi with:', {
           assistantId: ASSISTANT_ID,
           phoneNumberId: PHONE_NUMBER_ID,
-          customerNumber: formattedPhone,
-          scheduledAt
+          customerNumber: formattedPhone
         })
         const vapiResponse = await createVapiCall({
           assistantId: ASSISTANT_ID,
           phoneNumberId: PHONE_NUMBER_ID,
           customerNumber: formattedPhone,
-          scheduledAt,
           variables: {
             leadName: contact.first_name || 'there',
             companyName: contact.company || 'your company',
@@ -118,8 +111,7 @@ export async function POST(request: NextRequest) {
         results.push({
           id: contact.id,
           success: true,
-          vapiCallId: vapiResponse.id,
-          scheduledAt
+          vapiCallId: vapiResponse.id
         })
 
       } catch (err) {
