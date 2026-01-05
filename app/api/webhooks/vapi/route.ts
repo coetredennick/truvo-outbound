@@ -28,7 +28,16 @@ export async function POST(request: NextRequest) {
     // Vapi sends message wrapper
     const message = body.message || body
 
-    // Only process end-of-call-report
+    // Handle status-update errors (e.g., call.start.error-get-assistant)
+    if (message.type === 'status-update' && message.status === 'error') {
+      await notifyVapiError(
+        message.endedReason || message.error || 'Unknown error',
+        { source: 'webhook-status-update', callId: message.call?.id }
+      )
+      return NextResponse.json({ received: true })
+    }
+
+    // Only process end-of-call-report for call outcome tracking
     if (message.type !== 'end-of-call-report') {
       return NextResponse.json({ received: true })
     }
