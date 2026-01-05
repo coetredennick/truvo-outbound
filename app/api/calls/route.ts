@@ -122,15 +122,23 @@ export async function POST(request: NextRequest) {
           success: false,
           error: err instanceof Error ? err.message : 'Unknown error'
         })
+
+        // Stop on first failure - don't schedule remaining calls
+        break
       }
     }
 
     const successCount = results.filter(r => r.success).length
     const failCount = results.filter(r => !r.success).length
+    const skippedCount = contacts.length - results.length
+
+    let message = `${successCount} calls initiated`
+    if (failCount > 0) message += `, ${failCount} failed`
+    if (skippedCount > 0) message += `, ${skippedCount} cancelled`
 
     return NextResponse.json({
-      success: true,
-      message: `${successCount} calls initiated, ${failCount} failed`,
+      success: failCount === 0,
+      message,
       results
     })
 
