@@ -25,26 +25,31 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
 
-    // Vapi sends message wrapper
+    // Vapi sends message wrapper or direct payload
     const message = body.message || body
+    const eventType = message.type || body.type
 
-    // Handle status-update errors (e.g., call.start.error-get-assistant)
-    if (message.type === 'status-update' && message.status === 'error') {
+    console.log('Webhook received:', { eventType, body: JSON.stringify(body).slice(0, 500) })
+
+    // Handle error events
+    if (eventType === 'call-failed' || (eventType === 'status-update' && message.status === 'error')) {
       await notifyVapiError(
-        message.endedReason || message.error || 'Unknown error',
-        { source: 'webhook-status-update', callId: message.call?.id }
+        message.endedReason || message.error || body.error || 'Unknown error',
+        { source: 'webhook-error', callId: message.call?.id || body.call?.id }
       )
       return NextResponse.json({ received: true })
     }
 
-    // Only process end-of-call-report for call outcome tracking
-    if (message.type !== 'end-of-call-report') {
+    // Process call-ended or end-of-call-report
+    if (eventType !== 'call-ended' && eventType !== 'end-of-call-report') {
       return NextResponse.json({ received: true })
     }
 
-    const vapiCallId = message.call?.id
-    const endedReason = message.endedReason
-    const duration = message.call?.duration || message.durationSeconds || 0
+    // Extract call data - handle different payload structures
+    const call = message.call || body.call || body
+    const vapiCallId = call.id || message.callId || body.callId
+    const endedReason = message.endedReason || body.endedReason || call.endedReason
+    const duration = call.duration || message.duration || message.durationSeconds || 0
 
     if (!vapiCallId) {
       console.error('No call ID in webhook payload')
