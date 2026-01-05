@@ -13,11 +13,17 @@ const ASSISTANT_ID = process.env.NEXT_PUBLIC_DEFAULT_ASSISTANT_ID!
 const PHONE_NUMBER_ID = process.env.NEXT_PUBLIC_DEFAULT_PHONE_NUMBER_ID!
 const CALL_INTERVAL_MS = 30000 // 30 seconds between calls
 
-// Format phone to E.164
-function formatPhone(phone: string): string {
-  const digits = phone.replace(/\D/g, '')
+// Format phone to E.164, strip all non-digits including Unicode junk
+function formatPhone(phone: string): string | null {
+  // Strip everything except digits 0-9
+  const digits = phone.replace(/[^0-9]/g, '')
+
+  // Validate we have a real phone number
+  if (digits.length < 10) return null
   if (digits.length === 10) return `+1${digits}`
   if (digits.length === 11 && digits[0] === '1') return `+${digits}`
+  if (digits.length > 15) return null  // Too long
+
   return `+${digits}`
 }
 
@@ -54,6 +60,17 @@ export async function POST(request: NextRequest) {
         continue
       }
 
+      // Validate phone number
+      const formattedPhone = formatPhone(contact.phone)
+      if (!formattedPhone) {
+        results.push({
+          id: contact.id,
+          success: false,
+          error: `Invalid phone number: ${contact.phone}`
+        })
+        continue
+      }
+
       try {
         // Schedule call: first one now, rest staggered 30s apart
         const scheduledAt = i === 0
@@ -75,7 +92,7 @@ export async function POST(request: NextRequest) {
         const vapiResponse = await createVapiCall({
           assistantId: ASSISTANT_ID,
           phoneNumberId: PHONE_NUMBER_ID,
-          customerNumber: formatPhone(contact.phone),
+          customerNumber: formattedPhone,
           scheduledAt,
           variables: {
             leadName: contact.first_name || 'there',
